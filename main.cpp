@@ -2,8 +2,11 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/shared_ptr.hpp>
+#include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 #include <syslog.h>
 #include <unistd.h>
 
@@ -75,6 +78,22 @@ public:
               acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
     {
         start_accept();
+    }
+
+    void run()
+    {
+        // Create a pool of threads to run all of the io_contexts.
+        std::vector<boost::shared_ptr<boost::thread> > threads;
+        for (std::size_t i = 0; i < 8; ++i)
+        {
+            boost::shared_ptr<boost::thread> thread(new boost::thread(
+                    boost::bind(&boost::asio::io_context::run, &io_context_)));
+            threads.push_back(thread);
+        }
+
+        // Wait for all threads in the pool to exit.
+        for (std::size_t i = 0; i < threads.size(); ++i)
+            threads[i]->join();
     }
 
 private:
@@ -225,7 +244,8 @@ int main()
 
         // The io_context can now be used normally.
         syslog(LOG_INFO | LOG_USER, "Daemon started");
-        io_context.run();
+        //io_context.run();
+        s.run();
         syslog(LOG_INFO | LOG_USER, "Daemon stopped");
     }
     catch (std::exception& e)
