@@ -1,62 +1,108 @@
-//
-// daemon.cpp
-// ~~~~~~~~~~
-//
-// Copyright (c) 2003-2020 Christopher M. Kohlhoff (chris at kohlhoff dot com)
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
-
+#include <boost/asio.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/udp.hpp>
 #include <boost/asio/signal_set.hpp>
-#include <boost/array.hpp>
 #include <boost/bind/bind.hpp>
-#include <ctime>
+#include <cstdlib>
 #include <iostream>
 #include <syslog.h>
 #include <unistd.h>
 
-using boost::asio::ip::udp;
+using boost::asio::ip::tcp;
 
-class udp_daytime_server
+class session
 {
 public:
-    udp_daytime_server(boost::asio::io_context& io_context)
-            : socket_(io_context, udp::endpoint(udp::v4(), 13))
+    session(boost::asio::io_context& io_context)
+            : socket_(io_context)
     {
-        start_receive();
+    }
+
+    tcp::socket& socket()
+    {
+        return socket_;
+    }
+
+    void start()
+    {
+        socket_.async_read_some(boost::asio::buffer(data_, max_length),
+                                boost::bind(&session::handle_read, this,
+                                            boost::asio::placeholders::error,
+                                            boost::asio::placeholders::bytes_transferred));
     }
 
 private:
-    void start_receive()
+    void handle_read(const boost::system::error_code& error,
+                     size_t bytes_transferred)
     {
-        socket_.async_receive_from(
-                boost::asio::buffer(recv_buffer_), remote_endpoint_,
-                boost::bind(&udp_daytime_server::handle_receive,
-                            this, boost::placeholders::_1));
+        if (!error)
+        {
+            boost::asio::async_write(socket_,
+                                     boost::asio::buffer(data_, bytes_transferred),
+                                     boost::bind(&session::handle_write, this,
+                                                 boost::asio::placeholders::error));
+        }
+        else
+        {
+            delete this;
+        }
     }
 
-    void handle_receive(const boost::system::error_code& ec)
+    void handle_write(const boost::system::error_code& error)
     {
-        if (!ec)
+        if (!error)
         {
-            using namespace std; // For time_t, time and ctime;
-            time_t now = time(0);
-            std::string message = ctime(&now);
+            socket_.async_read_some(boost::asio::buffer(data_, max_length),
+                                    boost::bind(&session::handle_read, this,
+                                                boost::asio::placeholders::error,
+                                                boost::asio::placeholders::bytes_transferred));
+        }
+        else
+        {
+            delete this;
+        }
+    }
 
-            boost::system::error_code ignored_ec;
-            socket_.send_to(boost::asio::buffer(message),
-                            remote_endpoint_, 0, ignored_ec);
+    tcp::socket socket_;
+    enum { max_length = 1024 };
+    char data_[max_length];
+};
+
+class server
+{
+public:
+    server(boost::asio::io_context& io_context, short port)
+            : io_context_(io_context),
+              acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
+    {
+        start_accept();
+    }
+
+private:
+    void start_accept()
+    {
+        session* new_session = new session(io_context_);
+        acceptor_.async_accept(new_session->socket(),
+                               boost::bind(&server::handle_accept, this, new_session,
+                                           boost::asio::placeholders::error));
+    }
+
+    void handle_accept(session* new_session,
+                       const boost::system::error_code& error)
+    {
+        if (!error)
+        {
+            new_session->start();
+        }
+        else
+        {
+            delete new_session;
         }
 
-        start_receive();
+        start_accept();
     }
 
-    udp::socket socket_;
-    udp::endpoint remote_endpoint_;
-    boost::array<char, 1> recv_buffer_;
+    boost::asio::io_context& io_context_;
+    tcp::acceptor acceptor_;
 };
 
 int main()
@@ -68,7 +114,7 @@ int main()
         // Initialise the server before becoming a daemon. If the process is
         // started from a shell, this means any errors will be reported back to the
         // user.
-        udp_daytime_server server(io_context);
+        server s(io_context, 12345);
 
         // Register signal handlers so that the daemon may be shut down. You may
         // also want to register for other signals, such as SIGHUP to trigger a
