@@ -13,6 +13,11 @@
 using namespace std;
 using boost::asio::ip::tcp;
 
+void cout_time() {
+    time_t now = time(0);
+    cout << ctime(&now);
+}
+
 class session
 {
 public:
@@ -40,8 +45,7 @@ private:
     {
         if (!error)
         {
-            time_t now = time(0);
-            cout << ctime(&now);
+            cout_time();
             string request = string(data_, bytes_transferred);
             cout << request;
             cout.flush();
@@ -78,11 +82,14 @@ private:
 class server
 {
 public:
-    server(boost::asio::io_context& io_context, short port)
+    server(boost::asio::io_context& io_context, const string& address, const short& port, const string& directory)
             : io_context_(io_context),
-              acceptor_(io_context)
+              acceptor_(io_context),
+              address_(address),
+              port_(port),
+              directory_(directory)
     {
-        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::make_address_v4("127.0.0.1"), 8080);
+        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::make_address_v4(address), port);
         acceptor_.open(endpoint.protocol());
         acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
         acceptor_.bind(endpoint);
@@ -93,6 +100,12 @@ public:
 
     void run()
     {
+        cout_time();
+        cout << "ip: " << address_ << endl;
+        cout << "port: " << port_ << endl;
+        cout << "directory: " << directory_ << endl;
+        cout << endl;
+
         // Create a pool of threads to run all of the io_contexts.
         std::vector<boost::shared_ptr<boost::thread> > threads;
         for (std::size_t i = 0; i < 8; ++i)
@@ -133,18 +146,42 @@ private:
 
     boost::asio::io_context& io_context_;
     tcp::acceptor acceptor_;
+    string address_;
+    short port_;
+    string directory_;
 };
 
-int main()
+int main(int argc, char *argv[])
 {
     try
     {
+        int opt;
+        string address;
+        int port;
+        string directory;
+        while ((opt = getopt(argc, argv, "d:h:p:")) != -1) {
+            switch (opt) {
+                case 'h':
+                    address = optarg;
+                    break;
+                case 'p':
+                    port = atoi(optarg);
+                    break;
+                case 'd':
+                    directory = optarg;
+                    break;
+                default:
+                    cout << "error" << endl;
+                    return 1;
+            }
+        }
+
         boost::asio::io_context io_context;
 
         // Initialise the server before becoming a daemon. If the process is
         // started from a shell, this means any errors will be reported back to the
         // user.
-        server s(io_context, 12345);
+        server s(io_context, address, port, directory);
 
         // Register signal handlers so that the daemon may be shut down. You may
         // also want to register for other signals, such as SIGHUP to trigger a
