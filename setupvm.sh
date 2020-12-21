@@ -22,3 +22,6 @@ apt install libboost1.74-dev -y
 g++ --version
 cmake --version
 dpkg -S /usr/include/boost/version.hpp
+
+# /home/box/final.txt
+echo 'https://github.com/nomhoi/final' >> /home/box/final.txt
