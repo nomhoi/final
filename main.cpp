@@ -10,6 +10,7 @@
 #include <syslog.h>
 #include <unistd.h>
 
+using namespace std;
 using boost::asio::ip::tcp;
 
 class session
@@ -39,6 +40,12 @@ private:
     {
         if (!error)
         {
+            time_t now = time(0);
+            cout << ctime(&now);
+            string request = string(data_, bytes_transferred);
+            cout << request;
+            cout.flush();
+
             boost::asio::async_write(socket_,
                                      boost::asio::buffer(data_, bytes_transferred),
                                      boost::bind(&session::handle_write, this,
@@ -54,10 +61,8 @@ private:
     {
         if (!error)
         {
-            socket_.async_read_some(boost::asio::buffer(data_, max_length),
-                                    boost::bind(&session::handle_read, this,
-                                                boost::asio::placeholders::error,
-                                                boost::asio::placeholders::bytes_transferred));
+            boost::system::error_code ignored_ec;
+            socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ignored_ec);
         }
         else
         {
@@ -75,8 +80,14 @@ class server
 public:
     server(boost::asio::io_context& io_context, short port)
             : io_context_(io_context),
-              acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
+              acceptor_(io_context)
     {
+        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::make_address_v4("127.0.0.1"), 8080);
+        acceptor_.open(endpoint.protocol());
+        acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
+        acceptor_.bind(endpoint);
+        acceptor_.listen();
+
         start_accept();
     }
 
