@@ -93,6 +93,7 @@ private:
                 cout << "Error openning file" << endl;
                 buffers.push_back(boost::asio::buffer("HTTP/1.0 404 Not Found"));
             }
+            stream.close();
 
             buffers.push_back(boost::asio::buffer(misc_strings::crlf));
             buffers.push_back(boost::asio::buffer("Content-Type: text/html; charset=utf-8"));
@@ -119,6 +120,7 @@ private:
         {
             boost::system::error_code ignored_ec;
             socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ignored_ec);
+            socket_.close();
         }
         else
         {
