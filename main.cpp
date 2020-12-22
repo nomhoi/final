@@ -69,10 +69,18 @@ private:
             vector<string> tokens;
             boost::split(tokens, lines[0], boost::is_any_of(" "));
             cout << "method: " << tokens[0] << endl;
-            cout << "doc: " << tokens[1] << endl;
+            cout << "uri: " << tokens[1] << endl;
             cout << "http: " << tokens[2] << endl;
-            string file_path = directory_ + tokens[1];
-            cout << "path: " << file_path << endl;
+
+            string uri = tokens[1];
+            string path = uri;
+            size_t size = path.find('?');
+            if (size != string::npos) {
+                path = path.substr(0, size);
+            }
+            cout << "path: " << path << endl;
+            string file_path = directory_ + path;
+            cout << "file_path: " << file_path << endl;
 
             std::vector<boost::asio::const_buffer> buffers;
 
