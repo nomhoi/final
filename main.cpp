@@ -1,17 +1,26 @@
+#include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/lexical_cast.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
+#include <streambuf>
 #include <vector>
 #include <syslog.h>
 #include <unistd.h>
 
 using namespace std;
 using boost::asio::ip::tcp;
+
+namespace misc_strings {
+    const char name_value_separator[] = { ':', ' ' };
+    const char crlf[] = { '\r', '\n' };
+} // namespace misc_strings
 
 void cout_time() {
     time_t now = time(0);
@@ -21,8 +30,8 @@ void cout_time() {
 class session
 {
 public:
-    session(boost::asio::io_context& io_context)
-            : socket_(io_context)
+    session(boost::asio::io_context& io_context, const string& directory)
+            : socket_(io_context), directory_(directory)
     {
     }
 
@@ -45,13 +54,46 @@ private:
     {
         if (!error)
         {
+            cout << "------------------------------------------" << endl;
             cout_time();
             string request = string(data_, bytes_transferred);
             cout << request;
             cout.flush();
 
-            boost::asio::async_write(socket_,
-                                     boost::asio::buffer(data_, bytes_transferred),
+            vector<string> lines;
+            boost::split(lines, request, boost::is_any_of("\n"));
+            cout << "first line: " << lines[0] << endl;
+
+            vector<string> tokens;
+            boost::split(tokens, lines[0], boost::is_any_of(" "));
+            cout << "method: " << tokens[0] << endl;
+            cout << "doc: " << tokens[1] << endl;
+            cout << "http: " << tokens[2] << endl;
+            string file_path = directory_ + tokens[1];
+            cout << "path: " << file_path << endl;
+
+            std::vector<boost::asio::const_buffer> buffers;
+
+            ifstream stream(file_path);
+            string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+            if (stream.is_open()) {
+                cout << "content: " << content << endl;
+                buffers.push_back(boost::asio::buffer("HTTP/1.0 200 OK"));
+            } else {
+                cout << "Error openning file" << endl;
+                buffers.push_back(boost::asio::buffer("HTTP/1.0 400 Bad Request"));
+            }
+
+            buffers.push_back(boost::asio::buffer(misc_strings::crlf));
+            buffers.push_back(boost::asio::buffer("Content-Type: text/html; charset=utf-8"));
+            buffers.push_back(boost::asio::buffer(misc_strings::crlf));
+            string content_length = "Content-Length: " + boost::lexical_cast<std::string>(content.size());
+            buffers.push_back(boost::asio::buffer(content_length));
+            buffers.push_back(boost::asio::buffer(misc_strings::crlf));
+            buffers.push_back(boost::asio::buffer(misc_strings::crlf));
+            buffers.push_back(boost::asio::buffer(content));
+
+            boost::asio::async_write(socket_, buffers,
                                      boost::bind(&session::handle_write, this,
                                                  boost::asio::placeholders::error));
         }
@@ -77,6 +119,7 @@ private:
     tcp::socket socket_;
     enum { max_length = 1024 };
     char data_[max_length];
+    string directory_;
 };
 
 class server
@@ -123,7 +166,7 @@ public:
 private:
     void start_accept()
     {
-        session* new_session = new session(io_context_);
+        session* new_session = new session(io_context_, directory_);
         acceptor_.async_accept(new_session->socket(),
                                boost::bind(&server::handle_accept, this, new_session,
                                            boost::asio::placeholders::error));
