@@ -31,7 +31,9 @@ class session
 {
 public:
     session(boost::asio::io_context& io_context, const string& directory)
-            : socket_(io_context), directory_(directory)
+            : strand_(boost::asio::make_strand(io_context)),
+              socket_(strand_),
+              directory_(directory)
     {
     }
 
@@ -116,6 +118,7 @@ private:
         }
     }
 
+    boost::asio::strand<boost::asio::io_context::executor_type> strand_;
     tcp::socket socket_;
     enum { max_length = 1024 };
     char data_[max_length];
