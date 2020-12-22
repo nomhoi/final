@@ -91,7 +91,7 @@ private:
                 buffers.push_back(boost::asio::buffer("HTTP/1.0 200 OK"));
             } else {
                 cout << "Error openning file" << endl;
-                buffers.push_back(boost::asio::buffer("HTTP/1.0 400 Bad Request"));
+                buffers.push_back(boost::asio::buffer("HTTP/1.0 404 Not Found"));
             }
 
             buffers.push_back(boost::asio::buffer(misc_strings::crlf));
